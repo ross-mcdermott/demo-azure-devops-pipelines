@@ -1,0 +1,89 @@
+parameters:
+  - name: service # Service identifier
+    type: string
+  - name: solution # .NET Core Solution to run Unit Tests against
+    type: string
+  - name: project # Project to use when publish / deploying
+    type: string
+  - name: dockerfile # Dockerfile to process
+    type: string
+  - name: registryName # ACR registry name
+    type: string
+  - name: imageTagValue # Image tag to set on container image
+    type: string
+  - name: publishImage # Publish image to ACR
+    type: boolean
+    default: false
+  - name: registryConnection # Connection name to ACR
+    type: string
+    default: 'notset'  
+    
+jobs:
+- job: 'Build'
+  displayName: Build and Test
+  pool:
+      vmImage: 'ubuntu-latest'
+  steps:
+  - checkout: self
+    path: service # relative to $(Agent.BuildDirectory)
+
+  - checkout: tooling
+    path: tooling # relative to $(Agent.BuildDirectory)
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Unit Tests'
+    inputs:
+      command: 'test'
+      arguments: --filter TestCategory=UnitTest
+      projects: $(Agent.BuildDirectory)/service/${{ parameters.solution }} 
+
+  - task: PowerShell@2
+    displayName: 'Docker Build'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Move to service repository base path"
+        cd $(Agent.BuildDirectory)/service
+
+        $dockerfile=Join-Path -Path $(Agent.BuildDirectory)/tooling -ChildPath ${{ parameters.dockerfile }}
+        $dockerfileName=Split-Path ${{ parameters.dockerfile }} -leaf
+        $dockerignorefile=Join-Path -Path (Split-Path -parent $dockerfile) -ChildPath .dockerignore
+
+        $entrypoint="$(Split-Path ${{ parameters.project }} -leafBase).dll"
+        
+        # copy to root for simpler context and docker ignore.
+        cp $dockerfile .
+
+        if($true -eq (Test-Path $dockerignorefile)) {
+          Write-Host "Copying .dockerignore file from '$($dockerignorefile)'..."
+          cp $dockerignorefile .
+        } else {
+          Write-Host "No docker ignore configured."
+        }
+
+        Write-Host "Building image using dockerfile '${{ parameters.dockerfile }}' for project '${{ parameters.project }}' and entrypoint '$($entrypoint)'..."
+        docker build --build-arg ENTRYPOINT=$($entrypoint) `
+          --build-arg PROJECT_PATH=${{ parameters.project }} `
+          --file $dockerfileName . `
+          --tag ${{ parameters.registryName }}/${{ parameters.service }}:${{ parameters.imageTagValue }}
+
+  - task: PowerShell@2
+    displayName: Container Scan
+    inputs:
+      targetType: 'inline'
+      script: |
+        docker run --rm `
+          -v /var/run/docker.sock:/var/run/docker.sock `
+          -v $HOME/Library/Caches:/root/.cache/ `
+          aquasec/trivy `
+          --exit-code 1 --no-progress --severity HIGH,CRITICAL --ignore-unfixed ${{ parameters.registryName }}/${{ parameters.service }}:${{ parameters.imageTagValue }}
+
+  - task: Docker@2
+    displayName: 'Push to ACR'
+    condition: and(succeeded(), eq('${{ parameters.publishImage }}', true))
+    inputs:
+      containerRegistry: '${{ parameters.registryConnection }}'
+      repository: ${{ parameters.service }}
+      command: 'push'
+      tags: ${{ parameters.imageTagValue }}
+      addPipelineData: true

@@ -1,0 +1,27 @@
+parameters:
+- name: service
+  type: string
+- name: registryName # ACR registry name
+  type: string
+- name: imageTagValue
+  type: string
+
+jobs:
+- deployment: DeployPrd
+  displayName: 'Deploy Production (${{ parameters.service }})'
+  pool:
+    vmImage: 'ubuntu-latest'
+  environment: 'Production'
+  strategy:
+    runOnce:
+      deploy:
+        steps:
+        - template: ./deploy.yaml
+          parameters:
+            subscription: azure-service-connection
+            resourceGroup: rg-app-service-container-demo
+            service: ${{ parameters.service }}
+            registryName: ${{ parameters.registryName }}
+            imageTagValue: ${{ parameters.imageTagValue }}
+            environmentCode: 'prd'
+

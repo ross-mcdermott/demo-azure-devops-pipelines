@@ -1,0 +1,30 @@
+parameters:
+- name: subscription
+  type: string
+- name: resourceGroup
+  type: string
+- name: service
+  type: string
+- name: environmentCode
+  type: string
+- name: registryName # ACR registry name
+  type: string
+- name: imageTagValue
+  type: string
+
+steps:
+# Other best practices such as deploy to a staging slot then swap
+# can be implemented here to deploy in a standard way.
+
+- task: AzureCLI@2
+  displayName: Deploy Container
+  inputs:
+    azureSubscription: ${{ parameters.subscription }}
+    scriptLocation: inlineScript
+    scriptType: pscore
+    inlineScript: |
+      az webapp config container set --name app-demo-${{ parameters.service }}-${{ parameters.environmentCode}} `
+        --resource-group ${{ parameters.resourceGroup }} `
+        --docker-registry-server-url https://${{ parameters.registryName }} `
+        --docker-custom-image-name ${{ parameters.registryName }}/${{ parameters.service }}:${{ parameters.imageTagValue }}
+

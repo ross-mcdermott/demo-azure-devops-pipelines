@@ -1,0 +1,20 @@
+trigger:
+  branches:
+    include:
+    - main
+
+name: service-1-v1-$(Build.BuildId)
+
+resources:
+  repositories:
+    - repository: service-base
+      type: git
+      name: blog-pipelines/service-base
+
+extends:
+  template: pipelines/azure-pipeline-ci-cd.yaml@service-base
+  parameters:
+    service: service-1-v1  # used for deployment and tagging information
+    solution: ./Service1v1.sln # the solution to call when running tests
+    project: ./Service1.Api/Service1.Api.csproj # Project that will be build / published
+    

@@ -1,0 +1,57 @@
+parameters:
+  - name: service
+    type: string
+  - name: solution
+    type: string
+  - name: project
+    type: string
+
+variables:
+- name: registryName
+  value: demobasicacr.azurecr.io
+- name: imageTagValue
+  value: $(Build.BuildId)
+- name: dockerfile
+  value: images/dotnet-core-web-api/Dockerfile
+
+resources:
+  repositories:
+    - repository: tooling
+      type: git
+      name: blog-pipelines/service-base
+
+stages:
+- stage: StageBuild
+  displayName: 'Build'
+  jobs:
+  - template: ./templates/build.yaml
+    parameters:
+      service: ${{parameters.service}}
+      solution: ${{parameters.solution}}
+      project: ${{parameters.project}}
+      dockerfile: $(dockerfile)
+      registryName: $(registryName)
+      imageTagValue: $(imageTagValue)
+      publishImage: true
+      registryConnection: 'demobasicacr'
+      
+- stage: StageTest
+  dependsOn: 'StageBuild'
+  displayName: 'Test'
+  jobs:
+  - template: ./templates/deploy-tst.yaml
+    parameters:
+      service: '${{parameters.service}}'
+      registryName: $(registryName)
+      imageTagValue: $(imageTagValue)
+      
+- stage: StageProduction
+  dependsOn: 'StageTest'
+  displayName: 'Production'
+  jobs:
+  - template: ./templates/deploy-prd.yaml
+    parameters:
+      service: '${{parameters.service}}'
+      registryName: $(registryName)
+      imageTagValue: $(imageTagValue)
+  
